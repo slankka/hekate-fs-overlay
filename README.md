@@ -5,6 +5,12 @@
 
 Custom Graphical Nintendo Switch bootloader, firmware patcher, tools, and many more.
 
+# Hekate FS Overlay
+
+> [!IMPORTANT]
+> This is an unofficial fork of [CTCaer/hekate](https://github.com/CTCaer/hekate).
+> It adds support for prepending an FS Overlay KIP through the `fsoverlay=` boot configuration key.
+> It is not maintained or endorsed by the upstream Hekate project.
 
 
 - [Features](#features)
