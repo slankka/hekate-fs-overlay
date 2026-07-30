@@ -430,6 +430,139 @@ static int _kipm_inject(const char *kipm_path, char *target_name, pkg2_kip1_info
 	return 0;
 }
 
+#define KIP1_MAGIC             0x3150494B
+#define FS_TITLE_ID            0x0100000000000000ULL
+#define FS_OVERLAY_ALIGNMENT   0x1000
+#define FS_OVERLAY_U32_MAX     0xFFFFFFFFU
+
+static const char *_validate_fs_overlay(const pkg2_kip1_t *overlay, u32 overlay_size, u32 *overlay_extent)
+{
+	if (overlay_size < sizeof(pkg2_kip1_t))
+		return "file is smaller than a KIP1 header";
+	if (overlay->magic != KIP1_MAGIC)
+		return "invalid KIP1 magic";
+	if (memcmp(overlay->name, "FS", 3) || overlay->tid != FS_TITLE_ID)
+		return "overlay is not an FS KIP";
+	if (overlay->flags & (BIT(KIP_TEXT) | BIT(KIP_RODATA) | BIT(KIP_DATA)))
+		return "overlay sections must be uncompressed";
+
+	u64 file_size = sizeof(pkg2_kip1_t);
+	for (u32 section_idx = 0; section_idx < KIP1_NUM_SECTIONS; section_idx++)
+		file_size += overlay->sections[section_idx].size_comp;
+	if (file_size != overlay_size)
+		return "KIP1 payload size does not match its header";
+
+	if (overlay->sections[KIP_TEXT].offset != 0)
+		return "overlay text must start at offset zero";
+	for (u32 section_idx = KIP_TEXT; section_idx <= KIP_DATA; section_idx++)
+	{
+		const pkg2_kip1_sec_t *section = &overlay->sections[section_idx];
+		if (section->size_comp != section->size_decomp)
+			return "overlay loadable sections must be unpacked";
+	}
+	for (u32 section_idx = KIP_BSS; section_idx < KIP1_NUM_SECTIONS; section_idx++)
+		if (overlay->sections[section_idx].size_comp)
+			return "overlay contains unsupported trailing payload";
+
+	u64 extent = (u64)overlay->sections[KIP_BSS].offset + overlay->sections[KIP_BSS].size_decomp;
+	if (!extent || extent > FS_OVERLAY_U32_MAX || (extent & (FS_OVERLAY_ALIGNMENT - 1)))
+		return "overlay extent is invalid or not page aligned";
+
+	for (u32 section_idx = KIP_TEXT; section_idx <= KIP_DATA; section_idx++)
+	{
+		const pkg2_kip1_sec_t *section = &overlay->sections[section_idx];
+		u64 section_end = (u64)section->offset + section->size_decomp;
+		if (section_end > extent)
+			return "overlay section exceeds its address range";
+		if (section_idx != KIP_TEXT)
+		{
+			const pkg2_kip1_sec_t *previous = &overlay->sections[section_idx - 1];
+			u64 previous_end = (u64)previous->offset + previous->size_decomp;
+			if (section->offset < previous_end)
+				return "overlay sections overlap or are out of order";
+		}
+	}
+	if (overlay->sections[KIP_BSS].offset <
+		(u64)overlay->sections[KIP_DATA].offset + overlay->sections[KIP_DATA].size_decomp)
+		return "overlay BSS overlaps loadable data";
+
+	*overlay_extent = (u32)extent;
+	return NULL;
+}
+
+const char *pkg2_inject_fs_overlay(link_t *info, const void *overlay_data, u32 overlay_size)
+{
+	u32 overlay_extent;
+	const pkg2_kip1_t *overlay = (const pkg2_kip1_t *)overlay_data;
+	const char *error = _validate_fs_overlay(overlay, overlay_size, &overlay_extent);
+	if (error)
+		return error;
+
+	pkg2_kip1_info_t *fs_info = NULL;
+	LIST_FOREACH_ENTRY(pkg2_kip1_info_t, ki, info, link)
+	{
+		if (ki->kip1->tid == FS_TITLE_ID && !memcmp(ki->kip1->name, "FS", 3))
+		{
+			fs_info = ki;
+			break;
+		}
+	}
+	if (!fs_info)
+		return "target FS KIP was not found";
+	if (_decompress_kip(fs_info, BIT(KIP_TEXT)))
+		return "failed to decompress FS text";
+	if (fs_info->size < sizeof(pkg2_kip1_t) || fs_info->size > FS_OVERLAY_U32_MAX - overlay_extent)
+		return "merged FS KIP size overflows";
+
+	u32 kipm_size = 0;
+	u8 *kipm_data = (u8 *)sd_file_read("bootloader/sys/emummc.kipm", &kipm_size);
+	if (!kipm_data || kipm_size < sizeof(fs_info->kip1->caps))
+	{
+		free(kipm_data);
+		return "bootloader/sys/emummc.kipm is missing or invalid";
+	}
+
+	u32 merged_size = fs_info->size + overlay_extent;
+	pkg2_kip1_t *merged = (pkg2_kip1_t *)zalloc(merged_size);
+	if (!merged)
+	{
+		free(kipm_data);
+		return "not enough memory for merged FS KIP";
+	}
+
+	memcpy(merged, fs_info->kip1, sizeof(pkg2_kip1_t));
+	memcpy(merged->caps, kipm_data, sizeof(merged->caps));
+
+	const u8 *overlay_src = overlay->data;
+	for (u32 section_idx = KIP_TEXT; section_idx <= KIP_DATA; section_idx++)
+	{
+		const pkg2_kip1_sec_t *section = &overlay->sections[section_idx];
+		memcpy(merged->data + section->offset, overlay_src, section->size_comp);
+		overlay_src += section->size_comp;
+	}
+	memcpy(merged->data + overlay_extent, fs_info->kip1->data,
+		fs_info->size - sizeof(pkg2_kip1_t));
+
+	merged->sections[KIP_TEXT].size_decomp += overlay_extent;
+	merged->sections[KIP_TEXT].size_comp   += overlay_extent;
+	for (u32 section_idx = KIP_RODATA; section_idx <= KIP_BSS; section_idx++)
+	{
+		if (merged->sections[section_idx].offset > FS_OVERLAY_U32_MAX - overlay_extent)
+		{
+			free(merged);
+			free(kipm_data);
+			return "merged FS section offset overflows";
+		}
+		merged->sections[section_idx].offset += overlay_extent;
+	}
+
+	fs_info->kip1 = merged;
+	fs_info->size = merged_size;
+	free(kipm_data);
+
+	return NULL;
+}
+
 const char *pkg2_patch_kips(link_t *info, char *patch_names)
 {
 	bool emummc_patch_selected = false;

@@ -117,6 +117,20 @@ static int _config_kip1(launch_ctxt_t *ctxt, const char *value)
 	return 0;
 }
 
+static int _config_fs_overlay(launch_ctxt_t *ctxt, const char *value)
+{
+	if (!value[0] || ctxt->fs_overlay)
+		return 1;
+
+	ctxt->fs_overlay = sd_file_read(value, &ctxt->fs_overlay_size);
+	if (!ctxt->fs_overlay)
+		return 1;
+
+	DPRINTF("Loaded FS overlay from SD (size %08X)\n", ctxt->fs_overlay_size);
+
+	return 0;
+}
+
 int hos_config_kip1patch(launch_ctxt_t *ctxt, const char *value)
 {
 	int len = strlen(value);
@@ -313,6 +327,7 @@ static const cfg_handler_t _config_handlers[] = {
 	{ "secmon",           _config_secmon },
 	{ "kernel",           _config_kernel },
 	{ "kip1",             _config_kip1 },
+	{ "fsoverlay",        _config_fs_overlay },
 	{ "kip1patch",        hos_config_kip1patch },
 	{ "fullsvcperm",      _config_svcperm },
 	{ "debugmode",        _config_debugmode },

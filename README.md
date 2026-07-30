@@ -110,6 +110,7 @@ A boot entry needs to be manually added/edited with the user's chosen key/value 
 | kernel={FILE path}     | Replaces the kernel binary                                 |
 | kip1={FILE path}       | Replaces/Adds kernel initial process. Multiple can be set. |
 | kip1={FOLDER path}/*   | Loads every .kip/.kip1 inside a folder. Compatible with single kip1 keys. |
+| fsoverlay={FILE path}  | Prepends an unpacked FS overlay KIP to FS after normal patches and emuMMC injection. Requires `bootloader/sys/emummc.kipm`; emuMMC boot additionally requires a position-independent build that derives its base from `_start`. Not supported with `stock=1`. |
 | pkg3={FILE path}       | Takes an Atmosphere `package3` binary and `extracts` all needed parts from it. kips, exosphere, warmboot and mesophere. |
 | fss0={FILE path}       | Same as above. !Deprecated! |
 | pkg3ex=1               | Enables loading of experimental content from a PKG3/FSS0 storage |

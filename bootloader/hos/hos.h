@@ -110,6 +110,8 @@ typedef struct _launch_ctxt_t
 
 	link_t kip1_list;
 	char  *kip1_patches;
+	void  *fs_overlay;
+	u32   fs_overlay_size;
 
 	bool svcperm;
 	bool debugmode;

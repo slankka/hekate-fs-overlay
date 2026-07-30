@@ -657,6 +657,7 @@ static void _free_launch_components(launch_ctxt_t *ctxt)
 	free(ctxt->pkg2);
 	free(ctxt->warmboot);
 	free(ctxt->kip1_patches);
+	free(ctxt->fs_overlay);
 }
 
 static bool _get_fs_exfat_compatible(link_t *info, u32 *hos_revision)
@@ -1021,6 +1022,24 @@ void hos_launch(ini_sec_t *cfg)
 
 		if (emu_patch_failed || !(btn_wait() & BTN_POWER))
 			goto error; // MUST stop here, because if user requests 'nogc' but it's not applied, their GC controller gets updated!
+	}
+
+	if (ctxt.fs_overlay)
+	{
+		if (ctxt.stock)
+		{
+			EPRINTF("FS overlay is not supported in stock mode!");
+			goto error;
+		}
+
+		const char *overlay_error = pkg2_inject_fs_overlay(&kip1_info, ctxt.fs_overlay, ctxt.fs_overlay_size);
+		if (overlay_error)
+		{
+			EHPRINTFARGS("Failed to inject FS overlay: %s!", overlay_error);
+			goto error;
+		}
+
+		gfx_printf("%kInjected FS overlay%k\n", TXT_CLR_GREENISH, TXT_CLR_DEFAULT);
 	}
 
 	// Rebuild and encrypt package2.
