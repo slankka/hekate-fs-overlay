@@ -1,0 +1,217 @@
+diff --git a/emummc/Makefile b/emummc/Makefile
+index 7af45eaac1ab11d89284366ab9113d5e4f4f4422..c8f5bf5e2c6fd0ca07d7250e412d7c8a54b3ebc0 100644
+--- a/emummc/Makefile
++++ b/emummc/Makefile
+@@ -81,17 +81,22 @@ else
+ 	export APP_JSON := $(TOPDIR)/$(CONFIG_JSON)
+ endif
+ 
+-.PHONY: $(BUILD) clean all
++.PHONY: $(BUILD) clean all kipm
+ 
+ all: $(BUILD)
+ 
++PYTHON ?= python3
++
++kipm: $(BUILD)
++	@$(PYTHON) tools/kip1converter.py $(TARGET)_unpacked.kip $(TARGET).kipm
++
+ $(BUILD):
+ 	@[ -d $@ ] || mkdir -p $@
+ 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+ 
+ clean:
+ 	@echo clean ...
+-	@rm -fr $(BUILD) $(TARGET).elf $(TARGET).kip
++	@rm -fr $(BUILD) $(TARGET).elf $(TARGET).kip $(TARGET)_unpacked.kip $(TARGET).kipm
+ 
+ else
+ .PHONY:	all
+diff --git a/emummc/build.sh b/emummc/build.sh
+index b33895374de2a2dad8aa240d603ce5cf1bf082f4..ab11555e8cb1aaeb76094494680fb031427f6b23 100644
+--- a/emummc/build.sh
++++ b/emummc/build.sh
+@@ -1,9 +1,19 @@
+-#!/bin/bash
++#!/usr/bin/env bash
+ 
+-set -e
++set -euo pipefail
++IFS=$'\n\t'
++
++readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++cd "${SCRIPT_DIR}"
++
++jobs="${JOBS:-}"
++if [[ -z "${jobs}" ]]; then
++    if command -v nproc >/dev/null 2>&1; then
++        jobs="$(nproc)"
++    else
++        jobs="4"
++    fi
++fi
+ 
+ make clean
+-make -j
+-./hactool.exe -t kip emummc.kip --uncompressed emummc_unpacked.kip
+-python2.7 tools/kip1converter.py emummc_unpacked.kip emummc.data
+-cat emummc.caps emummc.data > emummc.kipm
++make -j"${jobs}" kipm
+diff --git a/emummc/source/main.c b/emummc/source/main.c
+index a06101a9e58525524f23f0c126f5c6febb65e0fc..a8a363d2a3de1d03af8a89262f64309ea5bb1f9d 100644
+--- a/emummc/source/main.c
++++ b/emummc/source/main.c
+@@ -413,7 +413,11 @@ void __init()
+     u32 pageinfo;
+     svcQueryMemory(&meminfo, &pageinfo, (u64)&_start);
+ 
+-    text_base = meminfo.addr;
++    /* Use this injected module's relocated start, not the beginning of the
++     * process RX mapping. A preceding FS overlay (for example fs_codecvt)
++     * shares the same mapping, so meminfo.addr is not necessarily emuMMC's
++     * own base. __argdata__ remains the start of the original FS payload. */
++    text_base = (uintptr_t)&_start;
+ 
+     // Get code size
+     svcQueryMemory(&meminfo, &pageinfo, FS_CODE_BASE);
+diff --git a/emummc/tools/kip1converter.py b/emummc/tools/kip1converter.py
+index 79b20154d487b6a1d9c5bf1178e3616c7dc317c9..7f7a2660702af2f9eb26a6acf5ab873fa7d2899e 100644
+--- a/emummc/tools/kip1converter.py
++++ b/emummc/tools/kip1converter.py
+@@ -1,53 +1,98 @@
+-# Modified kip1 conversion script, originally by jakibaki
+-# Used for dev purposes, will be replaced in the future
++#!/usr/bin/env python3
++"""Convert an unpacked KIP1 image into Hekate's KIPM format."""
+ 
+-from struct import pack, unpack
+-from sys import argv
++from __future__ import annotations
+ 
+-f = open(argv[1], "rb")
++import argparse
++import struct
++from pathlib import Path
+ 
+-header_start = f.read(0x20)
+ 
+-section_names = [".text", ".rodata", ".data", ".bss"]
++KIP1_MAGIC = b"KIP1"
++KIP1_HEADER_SIZE = 0x100
++KIP1_CAPS_OFFSET = 0x80
++KIP1_CAPS_SIZE = 0x80
++KIP1_FLAGS_OFFSET = 0x1F
++SECTION_TABLE_OFFSET = 0x20
++SECTION_HEADER_SIZE = 0x10
++LOADABLE_SECTION_COUNT = 3
++BSS_SECTION_INDEX = 3
++PAGE_SIZE = 0x1000
+ 
+-sections = []
+-for i in range(6):
+-    section_bytes = f.read(0x10)
+-    section = {}
+ 
+-    if i < len(section_names):
+-        section["Name"] = section_names[i]
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Convert an unpacked KIP1 into a flat Hekate KIPM image."
++    )
++    parser.add_argument("input", type=Path, help="unpacked input KIP1")
++    parser.add_argument("output", type=Path, help="output KIPM")
++    return parser.parse_args()
+ 
+-    section["OutOffset"], section["DecompressedSize"], section["CompressedSize"], section["Attribute"] = unpack("IIII", section_bytes)
+-    sections.append(section)
+-    print(section)
+ 
+-assert (sections[3]["OutOffset"] + sections[3]["DecompressedSize"]) % 0x1000 == 0
++def read_sections(data: bytes) -> list[tuple[int, int, int, int]]:
++    sections = []
++    for index in range(6):
++        offset = SECTION_TABLE_OFFSET + index * SECTION_HEADER_SIZE
++        sections.append(struct.unpack_from("<4I", data, offset))
++    return sections
+ 
+-kernel_caps = []
+-for i in range(0x20):
+-    val, = unpack("I", f.read(4))
+-    kernel_caps.append(val)
+ 
+-f.seek(0x100)
++def convert(input_path: Path, output_path: Path) -> None:
++    data = input_path.read_bytes()
++    if len(data) < KIP1_HEADER_SIZE:
++        raise ValueError("input is smaller than a KIP1 header")
++    if data[:4] != KIP1_MAGIC:
++        raise ValueError("input does not have KIP1 magic")
++    if data[KIP1_FLAGS_OFFSET] & 0x07:
++        raise ValueError("input KIP1 has compressed loadable sections")
+ 
+-for i in range(3):
+-    section = sections[i]
+-    section["Buffer"] = f.read(section["DecompressedSize"])
+-print(f.read())
++    sections = read_sections(data)
++    expected_size = KIP1_HEADER_SIZE + sum(section[2] for section in sections)
++    if len(data) != expected_size:
++        raise ValueError(
++            f"KIP1 size mismatch: expected 0x{expected_size:X}, got 0x{len(data):X}"
++        )
+ 
+-f.close()
++    bss_offset, bss_size, bss_file_size, _ = sections[BSS_SECTION_INDEX]
++    if bss_file_size != 0:
++        raise ValueError("BSS unexpectedly contains file data")
+ 
+-f = open(argv[2], "wb")
++    image_size = bss_offset + bss_size
++    if image_size == 0 or image_size % PAGE_SIZE != 0:
++        raise ValueError("KIPM image end is not page aligned")
+ 
+-for i in range(3):
+-    section = sections[i]
+-    f.seek(section["OutOffset"])
+-    f.write(section["Buffer"])
+-    
+-f.seek(sections[3]["OutOffset"])
+-f.write(b'\0' * sections[3]["DecompressedSize"])
++    image = bytearray(image_size)
++    payload_offset = KIP1_HEADER_SIZE
++    for index, (out_offset, decompressed_size, file_size, _) in enumerate(sections):
++        if index < LOADABLE_SECTION_COUNT:
++            if file_size != decompressed_size:
++                raise ValueError(f"section {index} is not fully unpacked")
++            section_end = out_offset + decompressed_size
++            if section_end < out_offset or section_end > image_size:
++                raise ValueError(f"section {index} lies outside the KIPM image")
+ 
+-caps = open("emummc.caps", "wb")
+-for i in range(0x20):
+-    caps.write(pack("I", kernel_caps[i]))
++            payload_end = payload_offset + file_size
++            image[out_offset:section_end] = data[payload_offset:payload_end]
++
++        payload_offset += file_size
++
++    capabilities = data[
++        KIP1_CAPS_OFFSET : KIP1_CAPS_OFFSET + KIP1_CAPS_SIZE
++    ]
++    output_path.write_bytes(capabilities + image)
++
++    print(f"Input:  {input_path} (0x{len(data):X} bytes)")
++    print(f"Image:  0x{image_size:X} bytes")
++    print(f"Output: {output_path} (0x{output_path.stat().st_size:X} bytes)")
++
++
++def main() -> None:
++    args = parse_args()
++    try:
++        convert(args.input, args.output)
++    except (OSError, ValueError, struct.error) as error:
++        raise SystemExit(f"error: {error}") from error
++
++
++if __name__ == "__main__":
++    main()

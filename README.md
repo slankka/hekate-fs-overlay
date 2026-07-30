@@ -12,6 +12,9 @@ Custom Graphical Nintendo Switch bootloader, firmware patcher, tools, and many m
 > It adds support for prepending an FS Overlay KIP through the `fsoverlay=` boot configuration key.
 > It is not maintained or endorsed by the upstream Hekate project.
 
+The matching relocatable emuMMC source patch and reproducible KIPM build
+instructions are available in [`patches/emummc`](patches/emummc).
+
 
 - [Features](#features)
 - [Bootloader folders and files](#bootloader-folders-and-files)
