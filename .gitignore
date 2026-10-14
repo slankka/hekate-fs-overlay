@@ -2,6 +2,7 @@
 .vscode
 build/*
 output/*
+video-utf8/
 loader/payload_00.h
 loader/payload_01.h
 tools/bin2c/bin2c
