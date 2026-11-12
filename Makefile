@@ -16,6 +16,14 @@ TARGET := hekate
 BUILDDIR := build
 BUILDTDIR := build/$(TARGET)
 OUTPUTDIR := output
+
+# Build products written into $(OUTPUTDIR). This fork also keeps release assets,
+# packaging scripts and the upstream reference tree there, so `clean` must never
+# remove the directory itself - use `make distclean` for the full wipe.
+OUTPUT_BINS := $(OUTPUTDIR)/$(TARGET).bin $(OUTPUTDIR)/$(TARGET)_unc.bin \
+               $(OUTPUTDIR)/$(TARGET).bin.00.lz $(OUTPUTDIR)/$(TARGET).bin.01.lz \
+               $(OUTPUTDIR)/nyx.bin $(OUTPUTDIR)/$(TARGET)__ram8GB.bin \
+               $(OUTPUTDIR)/$(TARGET)_unc__ram8GB.bin $(OUTPUTDIR)/*.bso
 SOURCEDIR = bootloader
 BDKDIR := bdk
 BDKINC := -I./$(BDKDIR)
@@ -96,7 +104,10 @@ endif
 
 ################################################################################
 
-.PHONY: all clean $(LDRDIR) $(TOOLS) $(NYXDIR) $(MODULEDIRS)
+.PHONY: all clean distclean $(LDRDIR) $(TOOLS) $(NYXDIR) $(MODULEDIRS)
+
+# `distclean` is a top-level-only goal: the sub-makes know `all` and `clean` only.
+SUBMAKE_GOALS = $(if $(filter distclean,$(MAKECMDGOALS)),clean,$(MAKECMDGOALS))
 
 all: $(TARGET).bin $(LDRDIR)
 	@printf ICTC49 >> $(OUTPUTDIR)/$(TARGET).bin
@@ -114,15 +125,18 @@ all: $(TARGET).bin $(LDRDIR)
 
 clean: $(TOOLS)
 	@rm -rf $(BUILDDIR)
+	@rm -f $(OUTPUT_BINS)
+	@$(MAKE) --no-print-directory -C $(LDRDIR) clean -$(MAKEFLAGS)
+
+distclean: clean
 	@rm -rf $(OUTPUTDIR)
-	@$(MAKE) --no-print-directory -C $(LDRDIR) $(MAKECMDGOALS) -$(MAKEFLAGS)
 
 $(MODULEDIRS): $(BUILDTDIR)/$(TARGET).elf
-	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS)
+	@$(MAKE) --no-print-directory -C $@ $(SUBMAKE_GOALS) -$(MAKEFLAGS)
 
 $(NYXDIR): $(BUILDTDIR)/$(TARGET).elf $(MODULEDIRS)
 	@echo --------------------------------------
-	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS)
+	@$(MAKE) --no-print-directory -C $@ $(SUBMAKE_GOALS) -$(MAKEFLAGS)
 
 $(LDRDIR): $(TARGET).bin $(TOOLS) $(NYXDIR) $(MODULEDIRS)
 	@$(TOOLSLZ)/lz77 $(OUTPUTDIR)/$(TARGET).bin
@@ -133,10 +147,10 @@ $(LDRDIR): $(TARGET).bin $(TOOLS) $(NYXDIR) $(MODULEDIRS)
 	@$(TOOLSB2C)/bin2c payload_01 > $(LDRDIR)/payload_01.h
 	@rm payload_00
 	@rm payload_01
-	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS) PAYLOAD_NAME=$(TARGET)
+	@$(MAKE) --no-print-directory -C $@ $(SUBMAKE_GOALS) -$(MAKEFLAGS) PAYLOAD_NAME=$(TARGET)
 
 $(TOOLS):
-	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS)
+	@$(MAKE) --no-print-directory -C $@ $(SUBMAKE_GOALS) -$(MAKEFLAGS)
 
 $(TARGET).bin: $(BUILDTDIR)/$(TARGET).elf
 	@$(OBJCOPY) -S -O binary $< $(OUTPUTDIR)/$@

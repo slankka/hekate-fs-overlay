@@ -116,7 +116,7 @@ all: $(TARGET).bin
 clean:
 	@rm -rf $(OBJS)
 	@rm -rf $(BUILDDIR)
-	@rm -rf $(OUTPUTDIR)
+	@rm -f $(OUTPUTDIR)/$(TARGET).bin
 
 $(TARGET).bin: $(BUILDDIR)/$(TARGET).elf
 	@$(OBJCOPY) -S -O binary $< $(OUTPUTDIR)/$@
