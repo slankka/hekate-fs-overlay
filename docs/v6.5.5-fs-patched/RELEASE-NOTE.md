@@ -1,6 +1,6 @@
 # hekate-fs-overlay — fs-patched (hekate v6.5.5)
 
-**Release assets:** `hekate-fs-overlay-v6.5.5-fs-patched.zip` (full) · `hekate-fs-overlay-v6.5.5-fs-patched-minimal.zip` (minimal) · `hekate-fs-overlay-v6.5.5-fs-patched.bin` (standalone payload) · `hekate-fs-overlay-v6.5.5-fs-patched-ram8GB.bin` (8 GB DRAM variant)
+**Release assets:** `hekate-fs-overlay-v6.5.5-fs-patched.zip` (full) · `hekate-fs-overlay-v6.5.5-fs-patched-minimal.zip` (minimal) · `hekate-fs-overlay-v6.5.5-fs-patched.bin` (standalone payload) · `hekate-fs-overlay-v6.5.5-fs-patched__ram8GB.bin` (8 GB DRAM variant)
 
 Unofficial fork of [CTCaer/hekate](https://github.com/CTCaer/hekate) that adds an
 `fsoverlay=` boot key for **prepending an FS Overlay KIP** to the FS process image.
@@ -144,7 +144,7 @@ intentionally does **not** ship `hekate_ipl.ini`, so your configuration is untou
 
 ### 8 GB DRAM consoles
 
-`hekate-fs-overlay-v6.5.5-fs-patched-ram8GB.bin` is the same payload with
+`hekate-fs-overlay-v6.5.5-fs-patched__ram8GB.bin` is the same payload with
 `rsvd_flags = RSVD_FLAG_DRAM_8GB` (a single byte at `0x122`). Load it as the **first**
 payload (RCM / `payload.bin`); it propagates the RAM configuration into
 `bootloader/update.bin` on its own, so the other copies do not need the variant.
@@ -157,17 +157,17 @@ Never use it on a stock 4 GB console.
 ```
 File:    hekate-fs-overlay-v6.5.5-fs-patched.zip
 Size:    1,162,330 bytes
-SHA-256: 19c893fa1879951541b75a393ecdbe787af9862f94b173826a582ff197df9df7
+SHA-256: c61f10cf84ca7876947ebc4969890558c15d9d17f12b8a293d2b7da34110d101
 
 File:    hekate-fs-overlay-v6.5.5-fs-patched-minimal.zip
 Size:    452,462 bytes
-SHA-256: 9dfdfd9ed0ee17f1b2966bd399bc88313cb980c0851bc06b3b9f5057a7b4b561
+SHA-256: 22c3a73079a82b543816a747652f583e41bd496e94188aa3f1a47c87bb879f1c
 
 File:    hekate-fs-overlay-v6.5.5-fs-patched.bin
 Size:    111,688 bytes
 SHA-256: 003727a024dd422c11fc3b854be52e49b7227f1ff7fb85911c3185beef4684c6
 
-File:    hekate-fs-overlay-v6.5.5-fs-patched-ram8GB.bin
+File:    hekate-fs-overlay-v6.5.5-fs-patched__ram8GB.bin
 Size:    111,688 bytes
 SHA-256: 605d7f398cb7c29c0ca9fa36fc30e80f2dd537479755c7632abb9ab4a4d750fc
 ```
@@ -209,17 +209,21 @@ untouched.
   `nyx.bin` / `libsys_lp0.bso` / `libsys_minerva.bso` / `res.pak` / `thk.bin` / `l4t/*`
   are the exact CTCaer-tested v6.5.5 images.
 - The FS Overlay KIP bundled in the full package is `fs_codecvt_dual_unpacked.kip`
-  from nx-fs-utf8. The overlay is a separate project with its own release cadence and
-  support matrix; see its release notes.
-- ⚠️ **emuMMC + HOS 23.5.0 emits an out-of-range FS version ID.** This is upstream
-  behaviour, not introduced by this fork. hekate encodes the matched FS entry index
-  into `emu_cfg.fs_ver` (`bootloader/hos/pkg2.c`: `idx - 1 - (idx > 17 ? 2 : 0)`).
-  With 78 FS entries, 23.5.0 maps to 73/74, while Atmosphere's `FS_VER_MAX` is 73
-  (`emummc/source/FS/FS_versions.h`). `get_fs_offsets()` then hits
-  `fatal_abort(Fatal_UnknownVersion)`. **This only affects the emuMMC KIPM path**
-  (i.e. `emummcforce=1`); the `fsoverlay=` feature itself does not read `fs_ver`.
-  Until Atmosphere adds `FS_VER_23_5_0` / `FS_VER_23_5_0_EXFAT`, use `fsoverlay=`
-  on **sysMMC**, or run 23.5.0 emuMMC without `emummcforce`.
+  from nx-fs-utf8 (a post-v3.3.0 build that adds 23.5.0 support). The overlay is a
+  separate project with its own release cadence and support matrix; see its release
+  notes.
+- **Build-system note:** `make clean` no longer deletes `output/`, because the fork
+  keeps release assets, packaging scripts and the upstream reference tree there. Use
+  `make distclean` when you really want `output/` gone.
+- ✅ **emuMMC + HOS 23.5.0 is fixed by the bundled KIPM.** hekate encodes the matched
+  FS entry index into `emu_cfg.fs_ver` (`bootloader/hos/pkg2.c`:
+  `idx - 1 - (idx > 17 ? 2 : 0)`), so 23.5.0 maps to 73/74. Atmosphère 1.12.2 added
+  `FS_VER_23_5_0` / `FS_VER_23_5_0_EXFAT` (plus `2350.h` / `2350_exfat.h`), raising the
+  valid range to 0..74. The `bootloader/sys/emummc.kipm` shipped here is rebuilt from
+  that source, so `emummcforce=1` boots on 23.5.0. The previous release shipped a
+  KIPM without the 23.5.0 tables and aborted with
+  `fatal_abort(Fatal_UnknownVersion)` — do **not** reuse an older `emummc.kipm`.
+  (`fsoverlay=` itself never reads `fs_ver`.)
 
 ## Attribution & License
 
