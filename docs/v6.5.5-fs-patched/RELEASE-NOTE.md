@@ -89,17 +89,17 @@ The **minimal** package contains only the binaries this fork changes:
 
 ```text
 payload.bin
-hekate_fs_overlay_v6.5.5-fs-patched.bin
 atmosphere/reboot_payload.bin
 bootloader/update.bin
-bootloader/sys/emummc.kipm
+bootloader/sys/emummc.kipm                         relocatable build (required)
+bootloader/fsoverlays/fs_codecvt_dual_unpacked.kip  FS Overlay KIP
 INSTALL.md
 ```
 
 Use it if you already run upstream Hekate v6.5.5. It ships **no** `nyx.bin` /
-`libsys_*.bso` / `res.pak` / `thk.bin` / `l4t/*` (unmodified, keep upstream's) and
-**no** FS Overlay KIP (get `fs_codecvt_dual_unpacked.kip` from the nx-fs-utf8 release
-and put it in `bootloader/fsoverlays/`).
+`libsys_*.bso` / `res.pak` / `thk.bin` / `l4t/*` (unmodified, keep upstream's). The
+bundled overlay KIP is a snapshot of nx-fs-utf8 and may be outdated — get the latest
+from the nx-fs-utf8 release and drop it in `bootloader/fsoverlays/`.
 
 ### `bootloader/hekate_ipl.ini`
 
@@ -157,11 +157,11 @@ Never use it on a stock 4 GB console.
 ```
 File:    hekate-fs-overlay-v6.5.5-fs-patched.zip
 Size:    1,162,330 bytes
-SHA-256: c61f10cf84ca7876947ebc4969890558c15d9d17f12b8a293d2b7da34110d101
+SHA-256: 10acf9b465e7f0c766fc718ca21b74f3cb9af44779990ad61e3549811826d910
 
 File:    hekate-fs-overlay-v6.5.5-fs-patched-minimal.zip
-Size:    452,462 bytes
-SHA-256: 22c3a73079a82b543816a747652f583e41bd496e94188aa3f1a47c87bb879f1c
+Size:    363,762 bytes
+SHA-256: c7f86db6d46ebeb669aa5a3608c208f15a265774746265a95fcf51355bbce31f
 
 File:    hekate-fs-overlay-v6.5.5-fs-patched.bin
 Size:    111,688 bytes
