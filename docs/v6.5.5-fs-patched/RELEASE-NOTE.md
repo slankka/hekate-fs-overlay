@@ -1,6 +1,6 @@
 # hekate-fs-overlay — fs-patched (hekate v6.5.5)
 
-**Release assets:** `hekate-fs-overlay-v6.5.5-fs-patched.zip` (full) · `hekate-fs-overlay-v6.5.5-fs-patched-minimal.zip` (minimal) · `hekate-fs-overlay-v6.5.5-fs-patched.bin` (standalone payload)
+**Release assets:** `hekate-fs-overlay-v6.5.5-fs-patched.zip` (full) · `hekate-fs-overlay-v6.5.5-fs-patched-minimal.zip` (minimal) · `hekate-fs-overlay-v6.5.5-fs-patched.bin` (standalone payload) · `hekate-fs-overlay-v6.5.5-fs-patched-ram8GB.bin` (8 GB DRAM variant)
 
 Unofficial fork of [CTCaer/hekate](https://github.com/CTCaer/hekate) that adds an
 `fsoverlay=` boot key for **prepending an FS Overlay KIP** to the FS process image.
@@ -67,6 +67,40 @@ so it must be an unpacked FS-title-ID KIP with a page-aligned memory extent.
 
 ## Installation
 
+### Package contents
+
+The **full** package is a complete Hekate v6.5.5 file set: every component this fork
+does not modify is the **byte-identical upstream v6.5.5 binary**, plus
+
+```text
+payload.bin                                        SD-root injection file (= update.bin)
+hekate_fs_overlay_v6.5.5-fs-patched.bin            this fork's payload (same image)
+atmosphere/reboot_payload.bin                      used when rebooting to payload
+bootloader/update.bin                              chain-loaded on every boot
+bootloader/fsoverlays/fs_codecvt_dual_unpacked.kip FS Overlay KIP
+bootloader/sys/emummc.kipm                         relocatable build (required)
+INSTALL.md
+```
+
+The upstream `hekate_ctcaer_6.5.5.bin` is **deliberately absent** — it is the
+unpatched payload and silently ignores `fsoverlay=`.
+
+The **minimal** package contains only the binaries this fork changes:
+
+```text
+payload.bin
+hekate_fs_overlay_v6.5.5-fs-patched.bin
+atmosphere/reboot_payload.bin
+bootloader/update.bin
+bootloader/sys/emummc.kipm
+INSTALL.md
+```
+
+Use it if you already run upstream Hekate v6.5.5. It ships **no** `nyx.bin` /
+`libsys_*.bso` / `res.pak` / `thk.bin` / `l4t/*` (unmodified, keep upstream's) and
+**no** FS Overlay KIP (get `fs_codecvt_dual_unpacked.kip` from the nx-fs-utf8 release
+and put it in `bootloader/fsoverlays/`).
+
 ### `bootloader/hekate_ipl.ini`
 
 ```ini
@@ -107,6 +141,48 @@ The `fsoverlay=` path **must match the actual file name** in `bootloader/fsoverl
 
 Keep your existing `bootloader/nyx.ini` (it stores the RTC `timeoffset`). This release
 intentionally does **not** ship `hekate_ipl.ini`, so your configuration is untouched.
+
+### 8 GB DRAM consoles
+
+`hekate-fs-overlay-v6.5.5-fs-patched-ram8GB.bin` is the same payload with
+`rsvd_flags = RSVD_FLAG_DRAM_8GB` (a single byte at `0x122`). Load it as the **first**
+payload (RCM / `payload.bin`); it propagates the RAM configuration into
+`bootloader/update.bin` on its own, so the other copies do not need the variant.
+Never use it on a stock 4 GB console.
+
+---
+
+## Checksums
+
+```
+File:    hekate-fs-overlay-v6.5.5-fs-patched.zip
+Size:    1,162,330 bytes
+SHA-256: 19c893fa1879951541b75a393ecdbe787af9862f94b173826a582ff197df9df7
+
+File:    hekate-fs-overlay-v6.5.5-fs-patched-minimal.zip
+Size:    452,462 bytes
+SHA-256: 9dfdfd9ed0ee17f1b2966bd399bc88313cb980c0851bc06b3b9f5057a7b4b561
+
+File:    hekate-fs-overlay-v6.5.5-fs-patched.bin
+Size:    111,688 bytes
+SHA-256: 003727a024dd422c11fc3b854be52e49b7227f1ff7fb85911c3185beef4684c6
+
+File:    hekate-fs-overlay-v6.5.5-fs-patched-ram8GB.bin
+Size:    111,688 bytes
+SHA-256: 605d7f398cb7c29c0ca9fa36fc30e80f2dd537479755c7632abb9ab4a4d750fc
+```
+
+Bundled within both packages:
+
+```
+File:    bootloader/sys/emummc.kipm
+Size:    368,768 bytes
+SHA-256: 0a9f9704f357146658e883b039257a046f21fdb366777d6e055ae0732e1f5ca8
+
+File:    bootloader/fsoverlays/fs_codecvt_dual_unpacked.kip   (full package only)
+Size:    11,316 bytes
+SHA-256: 5dd489666df37c59de51463cb84334350da6c6b8c4fd52992a77cc21df133972
+```
 
 ---
 
