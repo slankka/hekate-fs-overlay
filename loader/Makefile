@@ -29,6 +29,11 @@ OBJS = $(addprefix $(BUILDDIR)/, \
 CUSTOMDEFINES := -DBL_MAGIC=$(IPL_MAGIC)
 CUSTOMDEFINES += -DBL_VER_MJ=$(BLVERSION_MAJOR) -DBL_VER_MN=$(BLVERSION_MINOR) -DBL_VER_HF=$(BLVERSION_HOTFX) -DBL_VER_RL=$(BLVERSION_REL)
 
+# Optional 8 GB DRAM variant: sets RSVD_FLAG_DRAM_8GB in the loader's ipl_ver rcfg.
+ifeq ($(DRAM_8GB),1)
+CUSTOMDEFINES += -DDRAM_8GB
+endif
+
 #TODO: Considering reinstating some of these when pointer warnings have been fixed.
 WARNINGS := -Wall -Wsign-compare -Wno-array-bounds -Wno-stringop-overflow
 
